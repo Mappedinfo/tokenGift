@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tokengift"
+version = "0.1.2"
+description = "tokengift CLI for tokenSwap-compatible RSA gift/decrypt workflow"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "tokenSwap" }]
+dependencies = [
+  "cryptography>=43.0.0"
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: MIT License"
+]
+keywords = ["crypto", "rsa", "cli", "token-swap", "gift", "tokengift"]
+
+[project.urls]
+Homepage = "https://github.com/mappedinfo/tokenSwap"
+
+[project.scripts]
+tokengift = "tokengift_cli.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2.2",
+  "twine>=6.0.0"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tokengift_cli*"]

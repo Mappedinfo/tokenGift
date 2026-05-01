@@ -1,0 +1,59 @@
+:root {
+  color: #172033;
+  font-family: 'Inter', 'PingFang SC', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(140deg, #f7f8fc 0%, #eef4ff 45%, #eaf8fd 100%);
+}
+
+.token-app {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.token-header {
+  background: linear-gradient(90deg, #1e293b, #334155);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+}
+
+.token-header .ant-typography {
+  color: #fff;
+}
+
+.token-content {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.token-card {
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(16, 24, 40, 0.08);
+}
+
+.token-metric {
+  margin-bottom: 16px;
+  color: #334155;
+}
+
+.token-chart {
+  width: 100%;
+  min-height: 300px;
+}
