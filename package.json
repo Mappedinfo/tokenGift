@@ -1,7 +1,8 @@
 {
   "name": "tokengift",
   "private": false,
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "description": "tokengift CLI for token swap/gift key exchange",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +14,10 @@
   "bin": {
     "tokengift": "scripts/tokengift.js"
   },
+  "files": [
+    "scripts/tokengift.js",
+    "README.md"
+  ],
   "dependencies": {
     "@ant-design/icons": "^5.6.0",
     "@antv/g2plot": "^2.4.31",

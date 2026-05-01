@@ -3,6 +3,17 @@
 这是一个纯前端的 React + TypeScript + AntV( `@antv/g2plot`) 项目，可直接部署到 GitHub 仓库 `tokenSwap`。项目提供 token 银行与 token 兑换能力，并支持通过
 访问链接附加字符串自动解析配置。
 
+## 三版本说明
+
+当前项目在两个生态分别发布，并用途不同：
+
+- `npm` 包 `tokengift`：仅提供命令行工具（`node scripts/tokengift.js` 封装）。
+- `PyPI` 包 `tokengift`：提供同样参数与加密规则的 Python CLI。
+- `GitHub Pages`：前端“兑换中心 + 发起邀请 + 领取礼物”页面（本仓库页面版，按网址链接直接使用）。
+
+3 个版本共享同一套配置解析与 RSA-OAEP(SHA-256) 加解密规则，因此命令行与页面互相兼容。
+
+
 ## 特性
 
 - 纯前端实现，不依赖服务端
