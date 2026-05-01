@@ -2,7 +2,13 @@
 
 ## 项目描述
 
-这是一个名为 `tokengift` 的项目，可直接部署到 GitHub 仓库 `tokenGift`。项目提供 token 银行与 token 兑换能力，并支持通过访问链接附加字符串自动解析配置。
+这是一个名为 `tokengift` 的项目，可直接部署到 GitHub 仓库 [mappedinfo/tokengift](https://github.com/mappedinfo/tokengift)。项目提供 token 银行与 token 兑换能力，并支持通过访问链接附加字符串自动解析配置。
+
+官方链接：
+
+- GitHub: https://github.com/mappedinfo/tokengift
+- PyPI: https://pypi.org/project/tokengift/
+- npm: https://www.npmjs.com/package/tokengift
 
 ## 三版本说明
 
@@ -41,7 +47,7 @@ npm run preview
 ## GitHub Pages 部署
 
 ```bash
-# 使用你自己的仓库名，示例：mappedinfo/tokenGift
+# 使用你自己的仓库名，示例：mappedinfo/tokengift
 npm run build
 ```
 
@@ -54,7 +60,7 @@ npm run build
 - 文件：`.github/workflows/deploy-gh-pages.yml`
 - 触发：`main` 分支 push 或手动触发
 - 流程：`npm ci -> npm run build -> 同步 web/dist 到 gh-pages`
-- 默认会按仓库名 `/tokenSwap/` 作为 `base`，如果你仓库名不同可改：
+- 默认会按仓库名 `/tokengift/` 作为 `base`，如果你仓库名不同可改：
   - `web/vite.config.ts` 的 `GH_PAGES_BASE_PATH` / `VITE_BASE_PATH`
   - workflow 里的 `env: GH_PAGES_BASE_PATH: /你的仓库名/`
 

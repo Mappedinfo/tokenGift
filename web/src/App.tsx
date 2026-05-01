@@ -837,7 +837,7 @@ const App: React.FC = () => {
       {contextHolder}
       <Header className="token-header">
         <div className="token-header-inner">
-          <Title level={3}>tokenSwap 结算中心 · tokengift</Title>
+          <Title level={3}>tokengift · 交换与结算中心</Title>
           <Text>充值、兑换与配置赠与一体化</Text>
         </div>
       </Header>
