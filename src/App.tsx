@@ -13,21 +13,33 @@ import {
   Row,
   Select,
   Space,
+  Steps,
   Table,
+  Tabs,
   Tag,
   Typography
 } from 'antd';
-import { ReloadOutlined, SwapOutlined } from '@ant-design/icons';
+import {
+  CopyOutlined,
+  GiftOutlined,
+  LockOutlined,
+  ReloadOutlined,
+  SwapOutlined,
+  UploadOutlined
+} from '@ant-design/icons';
 import { Pie } from '@antv/g2plot';
 import { BankConfig, ParsedModel, SwapRecord } from './types';
 import {
   BASELINE_MODEL_ID,
   FALLBACK_CONFIG,
+  buildConfigShareCode,
   buildStorageKey,
+  extractPayloadFromInput,
   getEmbeddedCodeFromLocation,
   getInitialBalanceFromConfig,
   parseConfigFromSuffix
 } from './lib/configParser';
+import { decryptPayloadWithPrivateKey, encryptConfigForPublicKey } from './lib/tokengiftCrypto';
 
 const { Content, Header } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -37,6 +49,8 @@ type PersistedState = {
   records: SwapRecord[];
   savedAt: number;
 };
+
+type WorkMode = 'swap' | 'gift' | 'claim';
 
 const round6 = (value: number): number => Number(value.toFixed(6));
 
@@ -71,6 +85,17 @@ const App: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const pieRef = useRef<HTMLDivElement | null>(null);
   const [form] = Form.useForm();
+  const [activeMode, setActiveMode] = useState<WorkMode>('swap');
+
+  const [recipientPublicKey, setRecipientPublicKey] = useState('');
+  const [sendConfigText, setSendConfigText] = useState('');
+  const [giftCipherText, setGiftCipherText] = useState('');
+  const [giftShareLink, setGiftShareLink] = useState('');
+  const [isEncrypting, setIsEncrypting] = useState(false);
+
+  const [recipientPrivateKey, setRecipientPrivateKey] = useState('');
+  const [claimPayloadText, setClaimPayloadText] = useState('');
+  const [isDecrypting, setIsDecrypting] = useState(false);
 
   const modelOptions = useMemo(
     () =>
@@ -85,6 +110,17 @@ const App: React.FC = () => {
     () => sumByBaseline(balances, config.models),
     [balances, config.models],
   );
+
+  const shareableConfigCode = useMemo(() => buildConfigShareCode(config, 'auto'), [config]);
+
+  const buildInviteLink = (cipherText: string): string => {
+    const next = new URL(window.location.href);
+    ['cfg', 'config', 'tokenCfg', 'token_cfg'].forEach((key) => next.searchParams.delete(key));
+    next.searchParams.set('gift', cipherText);
+    next.search = next.searchParams.toString();
+    next.hash = '';
+    return next.toString();
+  };
 
   const saveState = (next: BankConfig, nextBalances: Record<string, number>, nextRecords: SwapRecord[]) => {
     try {
@@ -153,28 +189,34 @@ const App: React.FC = () => {
     messageApi.success(`已加载配置：${nextConfig.profileName}`);
   };
 
-  const readConfigFromLocation = () => {
+  const detectAndApplyFromLocation = () => {
     const code = getEmbeddedCodeFromLocation();
     if (!code) return;
+
     const parsed = parseConfigFromSuffix(code);
-    if (!parsed) {
-      messageApi.error('读取到的配置无法解析，请检查网址后缀格式');
+    if (parsed) {
+      normalizeAndApplyConfig(parsed);
+      setActiveMode('swap');
       return;
     }
-    normalizeAndApplyConfig(parsed);
+
+    const payload = extractPayloadFromInput(code);
+    if (payload) {
+      setClaimPayloadText(payload);
+      setActiveMode('claim');
+      messageApi.info('检测到邀请链接，已自动进入领取模式');
+    }
   };
 
   useEffect(() => {
-    readConfigFromLocation();
+    setSendConfigText(shareableConfigCode);
+  }, [shareableConfigCode]);
+
+  useEffect(() => {
+    detectAndApplyFromLocation();
 
     const onLocationChange = () => {
-      const code = getEmbeddedCodeFromLocation();
-      if (code) {
-        const parsed = parseConfigFromSuffix(code);
-        if (parsed) {
-          normalizeAndApplyConfig(parsed);
-        }
-      }
+      detectAndApplyFromLocation();
     };
 
     window.addEventListener('hashchange', onLocationChange);
@@ -304,6 +346,100 @@ const App: React.FC = () => {
     normalizeAndApplyConfig(parsed);
   };
 
+  const copyText = async (value: string, okMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      messageApi.success(okMessage);
+    } catch {
+      messageApi.error('复制失败，请手动选择文本复制');
+    }
+  };
+
+  const onCreateGift = async () => {
+    const sourceText = sendConfigText.trim() || shareableConfigCode;
+    if (!sourceText) {
+      messageApi.error('请先填写可加密的配置文本');
+      return;
+    }
+
+    if (!recipientPublicKey.trim()) {
+      messageApi.error('请粘贴接收方的 RSA 公钥');
+      return;
+    }
+
+    const parsed = parseConfigFromSuffix(sourceText);
+    if (!parsed) {
+      messageApi.error('配置内容无法解析为有效配置');
+      return;
+    }
+
+    const normalizedSource = buildConfigShareCode(parsed, 'compact');
+
+    setIsEncrypting(true);
+    try {
+      const cipher = await encryptConfigForPublicKey(recipientPublicKey, normalizedSource);
+      const link = buildInviteLink(cipher);
+      setGiftCipherText(cipher);
+      setGiftShareLink(link);
+      setActiveMode('gift');
+      messageApi.success('邀请链接已生成，可复制后发送给对方');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      messageApi.error(msg);
+    } finally {
+      setIsEncrypting(false);
+    }
+  };
+
+  const onResetGiftDraft = () => {
+    setSendConfigText(shareableConfigCode);
+    setGiftCipherText('');
+    setGiftShareLink('');
+  };
+
+  const openGiftWithPayload = async (payload: string) => {
+    if (!payload) {
+      messageApi.error('请输入有效的邀请密文或邀请链接');
+      return;
+    }
+
+    if (!recipientPrivateKey.trim()) {
+      messageApi.error('请粘贴 RSA 私钥');
+      return;
+    }
+
+    setIsDecrypting(true);
+    try {
+      const plain = await decryptPayloadWithPrivateKey(recipientPrivateKey, payload);
+      const parsed = parseConfigFromSuffix(plain);
+      if (!parsed) {
+        messageApi.error('解密成功，但配置内容无法解析');
+        return;
+      }
+
+      normalizeAndApplyConfig(parsed);
+      setActiveMode('swap');
+      setClaimPayloadText('');
+      setRecipientPrivateKey('');
+      messageApi.success('配置已领取成功，已返回兑换中心');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      messageApi.error(msg);
+    } finally {
+      setIsDecrypting(false);
+    }
+  };
+
+  const onQuickOpen = () => {
+    const payload = extractPayloadFromInput(claimPayloadText);
+    if (!payload) {
+      messageApi.error('未检测到可识别的邀请密文');
+      return;
+    }
+
+    void openGiftWithPayload(payload);
+  };
+
   const modelBalanceColumns = [
     {
       title: '模型',
@@ -367,142 +503,357 @@ const App: React.FC = () => {
     }
   ];
 
+  const renderSwapPanel = () => (
+    <>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={16}>
+          <Card className="token-card token-glass-card" title="配置与链接加载">
+            <Alert
+              message="URL 自动解析"
+              description={`当前网址后缀为：${window.location.href}`}
+              type="info"
+              showIcon
+              className="token-alert"
+            />
+            <Divider />
+            <Paragraph>
+              <Text strong>配置摘要：</Text> {config.profileName}
+            </Paragraph>
+            <Paragraph>
+              <Text strong>可分享代码：</Text>
+              <Text code className="mono-block">
+                {shareableConfigCode}
+              </Text>
+            </Paragraph>
+            <Space wrap style={{ marginBottom: 12 }}>
+              <Button
+                icon={<CopyOutlined />}
+                onClick={() => copyText(shareableConfigCode, '配置摘要已复制')}
+              >
+                复制配置摘要
+              </Button>
+              <Button
+                icon={<UploadOutlined />}
+                onClick={() => setSendConfigText(shareableConfigCode)}
+                type="dashed"
+              >
+                用当前配置填充发起邀请
+              </Button>
+            </Space>
+            <Divider />
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Input.TextArea
+                autoSize={{ minRows: 2, maxRows: 5 }}
+                placeholder="可手动粘贴配置串（url参数、base64(json)、短串格式）"
+                value={rawConfigText}
+                onChange={(event) => setRawConfigText(event.target.value)}
+              />
+              <Space>
+                <Button onClick={onManualParse} type="primary">
+                  解析配置字符串
+                </Button>
+                <Button icon={<ReloadOutlined />} onClick={detectAndApplyFromLocation}>
+                  重刷当前链接
+                </Button>
+                <Button onClick={() => setRawConfigText('')}>
+                  清空输入
+                </Button>
+              </Space>
+            </Space>
+          </Card>
+
+          <Card className="token-card token-glass-card" title="token 银行兑换" style={{ marginTop: 16 }}>
+            <Alert
+              message="兑换逻辑（基于基准模型）"
+              description={`1 ${BASELINE_MODEL_ID} = 1 基准单位。当前基准总值：${totalInBaseline} token`}
+              type="success"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Form layout="vertical" form={form} onFinish={onSwap}>
+              <Row gutter={12}>
+                <Col xs={24} sm={8}>
+                  <Form.Item
+                    label="来源模型"
+                    name="from"
+                    rules={[{ required: true, message: '请选择来源模型' }]}
+                    initialValue={config.models[0]?.id}
+                  >
+                    <Select options={modelOptions} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item
+                    label="目标模型"
+                    name="to"
+                    rules={[{ required: true, message: '请选择目标模型' }]}
+                    initialValue={config.models[1]?.id || config.models[0]?.id}
+                  >
+                    <Select options={modelOptions} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item
+                    label="兑换数量"
+                    name="amount"
+                    rules={[{ required: true, message: '请输入数量' }]}
+                  >
+                    <InputNumber
+                      style={{ width: '100%' }}
+                      min={0}
+                      precision={6}
+                      placeholder="输入 token 数量"
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Button type="primary" icon={<SwapOutlined />} htmlType="submit">
+                执行兑换
+              </Button>
+            </Form>
+          </Card>
+
+          <Card className="token-card token-glass-card" title="兑换记录" style={{ marginTop: 16 }}>
+            <Table
+              rowKey="id"
+              dataSource={records}
+              columns={recordColumns}
+              size="small"
+              pagination={{ pageSize: 5 }}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} lg={8}>
+          <Card className="token-card token-glass-card" title="余额与占比">
+            <div className="token-metric">
+              <Text>当前钱包总余额（基准模型视角）</Text>
+              <Title level={3} style={{ margin: 0 }}>
+                {totalInBaseline} token
+              </Title>
+            </div>
+            <div ref={pieRef} className="token-chart" />
+          </Card>
+          <Card className="token-card token-glass-card" title="模型余额明细" style={{ marginTop: 16 }}>
+            <Table
+              rowKey="key"
+              dataSource={modelBalanceRows}
+              columns={modelBalanceColumns}
+              size="small"
+              pagination={false}
+            />
+          </Card>
+        </Col>
+      </Row>
+    </>
+  );
+
+  const renderGiftPanel = () => (
+    <Row gutter={[16, 16]}>
+      <Col xs={24} lg={16}>
+        <Card className="token-card token-glass-card" title="发起邀请" extra={<GiftOutlined />}>
+          <Steps
+            current={2}
+            items={[
+              {
+                title: '1. 输入公钥',
+                description: '粘贴对方 RSA 公钥（PEM 或单行 Base64）'
+              },
+              {
+                title: '2. 选择配置',
+                description: '默认使用当前钱包配置，也可手动编辑'
+              },
+              {
+                title: '3. 一键生成',
+                description: '生成可分享链接/密文'
+              }
+            ]}
+            className="tokengift-steps"
+          />
+          <Divider />
+          <Paragraph>
+            <Text strong>接收方公钥</Text>
+          </Paragraph>
+          <Input.TextArea
+            rows={4}
+            value={recipientPublicKey}
+            placeholder="-----BEGIN PUBLIC KEY-----\n..."
+            onChange={(event) => setRecipientPublicKey(event.target.value)}
+          />
+
+          <Paragraph style={{ marginTop: 12 }}>
+            <Text strong>待加密配置（默认派生当前配置）</Text>
+          </Paragraph>
+          <Input.TextArea
+            rows={4}
+            value={sendConfigText}
+            onChange={(event) => setSendConfigText(event.target.value)}
+          />
+
+          <Space wrap style={{ marginTop: 12 }}>
+            <Button type="primary" loading={isEncrypting} onClick={onCreateGift}>
+              生成邀请密文/链接
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={onResetGiftDraft}>
+              重置为当前配置
+            </Button>
+            <Button type="dashed" onClick={() => setSendConfigText(buildConfigShareCode(config, 'compact'))}>
+              重新编码
+            </Button>
+          </Space>
+        </Card>
+
+        <Card className="token-card token-glass-card" title="发起结果" style={{ marginTop: 16 }}>
+          <Paragraph>
+            <Text strong>分享密文</Text>
+          </Paragraph>
+          <pre className="mono-block">{giftCipherText || '点击上方按钮后显示邀请密文'}</pre>
+          <Space wrap style={{ marginTop: 12 }}>
+            <Button
+              icon={<CopyOutlined />}
+              disabled={!giftCipherText}
+              onClick={() => copyText(giftCipherText, '密文已复制')}
+            >
+              复制密文
+            </Button>
+          </Space>
+          <Divider />
+          <Paragraph>
+            <Text strong>邀请链接</Text>
+          </Paragraph>
+          <Paragraph className="mono-block">{giftShareLink || '生成后自动拼接可分享链接'}</Paragraph>
+          <Button
+            icon={<CopyOutlined />}
+            disabled={!giftShareLink}
+            onClick={() => copyText(giftShareLink, '分享链接已复制')}
+          >
+            复制邀请链接
+          </Button>
+        </Card>
+      </Col>
+
+      <Col xs={24} lg={8}>
+        <Card className="token-card token-glass-card" title="邀请须知">
+          <Alert
+            message="提示"
+            description="加密结果使用 RSA-OAEP + SHA-256，并按 RSA 限制进行分块，用 `.` 连接。可直接把“邀请链接”或“密文”发给对方。"
+            type="info"
+            showIcon
+          />
+          <Divider />
+          <Paragraph>
+            <Text>支持输入公钥格式：标准 PEM、单行 Base64（自动识别）。建议使用 2048 或 3072 位以上密钥。 </Text>
+          </Paragraph>
+        </Card>
+      </Col>
+    </Row>
+  );
+
+  const renderClaimPanel = () => (
+    <Row gutter={[16, 16]}>
+      <Col xs={24} lg={16}>
+        <Card className="token-card token-glass-card" title="领取配置" extra={<LockOutlined />}>
+          <Steps
+            current={1}
+            items={[
+              {
+                title: '1. 粘贴私钥',
+                description: '粘贴你的 RSA 私钥（PKCS#8 PEM）'
+              },
+              {
+                title: '2. 粘贴密文',
+                description: '支持直接粘贴链接或密文文本'
+              },
+              {
+                title: '3. 一键解密加载',
+                description: '成功后自动返回兑换中心并应用配置'
+              }
+            ]}
+            className="tokengift-steps"
+          />
+          <Divider />
+          <Paragraph>
+            <Text strong>你的私钥</Text>
+          </Paragraph>
+          <Input.TextArea
+            rows={4}
+            value={recipientPrivateKey}
+            placeholder="-----BEGIN PRIVATE KEY-----\n..."
+            onChange={(event) => setRecipientPrivateKey(event.target.value)}
+          />
+          <Paragraph style={{ marginTop: 12 }}>
+            <Text strong>邀请密文 / 邀请链接</Text>
+          </Paragraph>
+          <Input.TextArea
+            rows={4}
+            value={claimPayloadText}
+            onChange={(event) => setClaimPayloadText(event.target.value)}
+            placeholder="支持输入 gift=xxx 或完整链接"
+          />
+
+          <Space wrap style={{ marginTop: 12 }}>
+            <Button
+              type="primary"
+              loading={isDecrypting}
+              onClick={() =>
+                void openGiftWithPayload(extractPayloadFromInput(claimPayloadText) || claimPayloadText)
+              }
+            >
+              一键加载
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={onQuickOpen}>
+              自动提取后再加载
+            </Button>
+            <Button type="dashed" onClick={() => setClaimPayloadText('')}>
+              清空重试
+            </Button>
+          </Space>
+        </Card>
+      </Col>
+
+      <Col xs={24} lg={8}>
+        <Card className="token-card token-glass-card" title="载入后可直接兑换">
+          <Alert
+            message="隐私说明"
+            description="配置仅在本地解密并留在当前浏览器。对方的私钥解密后才可读取明文。"
+            type="warning"
+            showIcon
+          />
+          <Divider />
+          <Paragraph>
+            <Text strong>当前可复制的数据快照</Text>
+          </Paragraph>
+          <pre className="mono-block">{shareableConfigCode}</pre>
+          <Button icon={<CopyOutlined />} onClick={() => copyText(shareableConfigCode, '已复制当前配置摘要')}>
+            一键复制当前配置
+          </Button>
+        </Card>
+      </Col>
+    </Row>
+  );
+
   return (
     <Layout className="token-app">
       {contextHolder}
       <Header className="token-header">
-        <Title level={3}>tokenSwap 结算中心</Title>
+        <div className="token-header-inner">
+          <Title level={3}>tokenSwap 结算中心 · tokengift</Title>
+          <Text>充值、兑换与配置赠与一体化</Text>
+        </div>
       </Header>
       <Content className="token-content">
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={16}>
-            <Card className="token-card" title="配置与链接加载">
-              <Alert
-                message="URL 自动解析"
-                description={`当前网址后缀为：${window.location.href}`}
-                type="info"
-                showIcon
-                style={{ marginBottom: 12 }}
-              />
-              <Paragraph>
-                <Text strong>解析到的钱包：</Text> {config.profileName}
-              </Paragraph>
-              <Paragraph>
-                <Text strong>API Key：</Text> {config.apiKey ? `${config.apiKey.slice(0, 4)}****${config.apiKey.slice(-4)}` : '-'}
-              </Paragraph>
-              <Paragraph>
-                <Text strong>base URL：</Text> {config.baseUrl}
-              </Paragraph>
-              <Paragraph>
-                <Text strong>支持模型：</Text>
-                {config.models.map((item) => (
-                  <Tag key={item.id} color="purple" style={{ marginBottom: 4 }}>
-                    {item.id}
-                  </Tag>
-                ))}
-              </Paragraph>
-              <Divider />
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  placeholder="可手动粘贴配置串（url附加参数、base64(json)或 apiKey|baseUrl|模型:倍率...）"
-                  value={rawConfigText}
-                  onChange={(event) => setRawConfigText(event.target.value)}
-                />
-                <Space>
-                  <Button onClick={onManualParse} type="primary">
-                    解析配置字符串
-                  </Button>
-                  <Button icon={<ReloadOutlined />} onClick={readConfigFromLocation}>
-                    重刷当前链接配置
-                  </Button>
-                </Space>
-              </Space>
-            </Card>
-
-            <Card className="token-card" title="token 银行兑换" style={{ marginTop: 16 }}>
-              <Alert
-                message="兑换逻辑（基于基准模型）"
-                description={`1 ${BASELINE_MODEL_ID} = 1 基准单位。当前基准总值：${totalInBaseline} token`}
-                type="success"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-              <Form layout="vertical" form={form} onFinish={onSwap}>
-                <Row gutter={12}>
-                  <Col xs={24} sm={8}>
-                    <Form.Item
-                      label="来源模型"
-                      name="from"
-                      rules={[{ required: true, message: '请选择来源模型' }]}
-                      initialValue={config.models[0]?.id}
-                    >
-                      <Select options={modelOptions} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} sm={8}>
-                    <Form.Item
-                      label="目标模型"
-                      name="to"
-                      rules={[{ required: true, message: '请选择目标模型' }]}
-                      initialValue={config.models[1]?.id || config.models[0]?.id}
-                    >
-                      <Select options={modelOptions} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} sm={8}>
-                    <Form.Item
-                      label="兑换数量"
-                      name="amount"
-                      rules={[{ required: true, message: '请输入数量' }]}
-                    >
-                      <InputNumber
-                        style={{ width: '100%' }}
-                        min={0}
-                        precision={6}
-                        placeholder="输入 token 数量"
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Button type="primary" icon={<SwapOutlined />} htmlType="submit">
-                  执行兑换
-                </Button>
-              </Form>
-            </Card>
-
-            <Card className="token-card" title="兑换记录" style={{ marginTop: 16 }}>
-              <Table
-                rowKey="id"
-                dataSource={records}
-                columns={recordColumns}
-                size="small"
-                pagination={{ pageSize: 5 }}
-              />
-            </Card>
-          </Col>
-
-          <Col xs={24} lg={8}>
-            <Card className="token-card" title="余额与占比">
-              <div className="token-metric">
-                <Text>当前钱包总余额（基准模型视角）</Text>
-                <Title level={3} style={{ margin: 0 }}>
-                  {totalInBaseline} token
-                </Title>
-              </div>
-              <div ref={pieRef} className="token-chart" />
-            </Card>
-            <Card className="token-card" title="模型余额明细" style={{ marginTop: 16 }}>
-              <Table
-                rowKey="key"
-                dataSource={modelBalanceRows}
-                columns={modelBalanceColumns}
-                size="small"
-                pagination={false}
-              />
-            </Card>
-          </Col>
-        </Row>
+        <Card className="token-card token-glass-card token-summary-card">
+          <Tabs
+            activeKey={activeMode}
+            onChange={(value) => setActiveMode(value as WorkMode)}
+            items={[
+              { key: 'swap', label: '兑换中心', children: renderSwapPanel() },
+              { key: 'gift', label: '发起邀请', children: renderGiftPanel() },
+              { key: 'claim', label: '领取礼物', children: renderClaimPanel() }
+            ]}
+            className="tokengift-tabs"
+          />
+        </Card>
       </Content>
     </Layout>
   );

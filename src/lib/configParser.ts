@@ -6,7 +6,7 @@ export const FALLBACK_MODELS: ParsedModel[] = [
   { id: BASELINE_MODEL_ID, rate: 1, note: '基准模型（可按此结算）' },
   { id: 'gpt-4.1', rate: 1.05 },
   { id: 'gpt-4o', rate: 1.15 },
-  { id: 'gpt-4.1-mini', rate: 0.72 },
+  { id: 'gpt-4.1-mini', rate: 0.72 }
 ];
 
 export const FALLBACK_CONFIG: BankConfig = {
@@ -37,6 +37,108 @@ const parseBase64Url = (value: string): string | null => {
   }
 };
 
+const toBase64Url = (value: string): string => {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+};
+
+const parseQueryPayload = (params: URLSearchParams): string | null => {
+  const keys = [
+    'cfg',
+    'config',
+    'tokenCfg',
+    'token_cfg',
+    'gift',
+    'payload',
+    'giftPayload',
+    'invite',
+    'cipher',
+    'open'
+  ];
+
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value) {
+      return decodeURIComponent(value);
+    }
+  }
+
+  return null;
+};
+
+const extractHashPayload = (hash: string): string | null => {
+  const raw = hash.replace(/^#\/?/, '').trim();
+  if (!raw) return null;
+
+  try {
+    const hashParams = new URLSearchParams(raw);
+    const paramPayload = parseQueryPayload(hashParams);
+    if (paramPayload) return paramPayload;
+  } catch {
+    // ignore
+  }
+
+  if (!raw.includes('=')) {
+    return decodeURIComponent(raw);
+  }
+
+  return null;
+};
+
+const extractFromUrlLike = (input: string): string | null => {
+  try {
+    const url = new URL(input, 'https://tokengift.local');
+
+    const queryPayload = parseQueryPayload(url.searchParams);
+    if (queryPayload) return queryPayload;
+
+    const hashPayload = extractHashPayload(url.hash);
+    if (hashPayload) return hashPayload;
+
+    const pathname = url.pathname.replace(/\/+$/, '');
+    const lastSegment = pathname.split('/').filter(Boolean).pop();
+    if (lastSegment && lastSegment.length > 20) {
+      return decodeURIComponent(lastSegment);
+    }
+  } catch {
+    // ignore non-url input
+  }
+
+  return null;
+};
+
+export const extractPayloadFromInput = (raw: string): string | null => {
+  const cleaned = raw.replace(/^\s+|\s+$/g, '');
+  if (!cleaned) return null;
+
+  const noQuotes = cleaned.replace(/^["'`]|["'`]$/g, '').trim();
+  const candidates = new Set<string>([cleaned, noQuotes]);
+
+  for (const line of cleaned.split(/[\r\n]+/).map((entry) => entry.trim()).filter(Boolean)) {
+    candidates.add(line);
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    if (candidate.includes('://') || candidate.startsWith('?') || candidate.startsWith('/') || candidate.includes('#')) {
+      const urlPayload = extractFromUrlLike(candidate);
+      if (urlPayload) return urlPayload;
+    }
+  }
+
+  const onlyOneLine = candidates.values().next().value ?? null;
+  if (typeof onlyOneLine === 'string' && onlyOneLine.trim()) {
+    return onlyOneLine.trim();
+  }
+
+  return null;
+};
+
 const parseModelList = (input: unknown): ParsedModel[] => {
   if (!input) return [];
 
@@ -46,14 +148,14 @@ const parseModelList = (input: unknown): ParsedModel[] => {
       .map((item) => {
         if (typeof item === 'string') {
           const [rawId, rawRate] = item.split(':');
-          const id = String(rawId || '').trim();
+          const id = decodeURIComponent(String(rawId || '').trim());
           if (!id) return null;
           return { id, rate: ensureNumber(rawRate, 1) };
         }
 
         if (item && typeof item === 'object') {
           const source = item as Record<string, unknown>;
-          const id = String(source.id || source.model || source.name || '').trim();
+          const id = decodeURIComponent(String(source.id || source.model || source.name || '').trim());
           if (!id) return null;
           return {
             id,
@@ -68,7 +170,7 @@ const parseModelList = (input: unknown): ParsedModel[] => {
   };
 
   const fromObjectMap = (obj: Record<string, unknown>): ParsedModel[] =>
-    Object.entries(obj).map(([id, rate]) => ({ id, rate: ensureNumber(rate, 1) }));
+    Object.entries(obj).map(([id, rate]) => ({ id: decodeURIComponent(id), rate: ensureNumber(rate, 1) }));
 
   if (typeof input === 'string') {
     const value = input.trim();
@@ -79,7 +181,7 @@ const parseModelList = (input: unknown): ParsedModel[] => {
       .filter(Boolean)
       .map((entry) => {
         const [rawId, rawRate] = entry.split(':');
-        return { id: rawId.trim(), rate: ensureNumber(rawRate, 1) };
+        return { id: decodeURIComponent(rawId.trim()), rate: ensureNumber(rawRate, 1) };
       })
       .filter((v) => v.id);
   }
@@ -196,36 +298,94 @@ export const buildStorageKey = (config: BankConfig): string => {
 };
 
 export const getEmbeddedCodeFromLocation = (): string | null => {
-  const { search, hash } = window.location;
-  const query = new URLSearchParams(search);
-  const direct =
-    query.get('cfg') || query.get('config') || query.get('tokenCfg') || query.get('token_cfg');
+  const { search, hash, pathname } = window.location;
+  const candidates = [
+    `${window.location.origin}${pathname}${search}${hash}`,
+    search,
+    hash,
+    pathname,
+    `${search}${hash}`
+  ];
 
-  if (direct && direct.trim()) {
-    return decodeURIComponent(direct.trim());
-  }
-
-  const rawSearch = search.replace(/^\?/, '');
-  if (rawSearch && !rawSearch.includes('=')) {
-    return decodeURIComponent(rawSearch);
-  }
-
-  const short = hash.replace(/^#\/?/, '').trim();
-  if (short) {
-    return decodeURIComponent(short);
+  for (const candidate of candidates) {
+    const payload = extractPayloadFromInput(candidate);
+    if (payload) {
+      return payload;
+    }
   }
 
   return null;
 };
 
+const buildConfigFromCompact = (config: BankConfig): string => {
+  const modelPart = config.models
+    .map((item) => `${encodeURIComponent(item.id)}:${item.rate}`)
+    .filter(Boolean)
+    .join(',');
+
+  const balancePart = Object.entries(config.initialBalances || {})
+    .filter(([model, value]) => model.trim() && Number.isFinite(value))
+    .map(([model, value]) => `${encodeURIComponent(model)}:${Math.max(0, value)}`)
+    .join(',');
+
+  const quota = ensureNumber(config.tokenQuota, 0);
+  return `${encodeURIComponent(config.apiKey)}|${encodeURIComponent(config.baseUrl)}|${modelPart}|${quota}|${balancePart}`;
+};
+
+const buildConfigFromJson = (config: BankConfig): string => {
+  const payload = {
+    profileName: config.profileName,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    models: config.models.map((item) => ({ id: item.id, rate: item.rate })),
+    tokenQuota: config.tokenQuota,
+    initialBalances: config.initialBalances
+  } as const;
+
+  return toBase64Url(JSON.stringify(payload));
+};
+
+export const buildConfigShareCode = (
+  config: BankConfig,
+  mode: 'compact' | 'json' | 'auto' = 'auto',
+): string => {
+  const compact = buildConfigFromCompact(config);
+  const json = buildConfigFromJson(config);
+
+  if (mode === 'compact') return compact;
+  if (mode === 'json') return json;
+  return json.length < compact.length ? json : compact;
+};
+
 const tryParseCompactString = (raw: string): BankConfig | null => {
-  // 格式示例: apiKey|baseUrl|gpt-5.5-medium:1,gpt-4o-mini:0.6|10000|gpt-5.5-medium:8000,gpt-4o-mini:1200
-  const [apiKey, baseUrl, modelPart, quotaPart, balancePart] = raw.split('|');
-  if (!apiKey || !baseUrl || !modelPart) return null;
+  const parts = raw.split('|');
+  if (parts.length < 3) return null;
+
+  // 支持两种形态：
+  // 旧格式: apiKey|baseUrl|models|quota|balances
+  // 新格式: profileName|apiKey|baseUrl|models|quota|balances
+  let idx = 0;
+  const profileProvided = parts.length >= 6;
+  const profileName = profileProvided ? decodeURIComponent(parts[0] || '外部配置钱包') : '外部配置钱包';
+
+  if (profileProvided) {
+    idx = 1;
+  }
+
+  const [apiKeyRaw, baseUrlRaw, modelPart, quotaPart, balancePart] = [
+    parts[idx],
+    parts[idx + 1],
+    parts[idx + 2],
+    parts[idx + 3],
+    parts[idx + 4]
+  ];
+
+  if (!apiKeyRaw || !baseUrlRaw || !modelPart) return null;
 
   const parsed: Record<string, unknown> = {
-    apiKey: apiKey.trim(),
-    baseUrl: baseUrl.trim(),
+    profileName,
+    apiKey: decodeURIComponent(apiKeyRaw.trim()),
+    baseUrl: decodeURIComponent(baseUrlRaw.trim()),
     models: parseModelList(modelPart),
     tokenQuota: ensureNumber(quotaPart, 0)
   } as Record<string, unknown>;
@@ -240,7 +400,7 @@ const tryParseCompactString = (raw: string): BankConfig | null => {
         const [name, value] = entry.split(':');
         if (!name || !value) return;
         const n = Number(value);
-        if (Number.isFinite(n)) balances[name.trim()] = Math.max(0, n);
+        if (Number.isFinite(n)) balances[decodeURIComponent(name.trim())] = Math.max(0, n);
       });
     if (Object.keys(balances).length) parsed.initialBalances = balances;
   }
@@ -250,11 +410,18 @@ const tryParseCompactString = (raw: string): BankConfig | null => {
 
 export const parseConfigFromSuffix = (raw: string | null): BankConfig | null => {
   if (!raw) return null;
+
+  const extracted = extractPayloadFromInput(raw);
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  const candidates = [trimmed];
   const decoded = parseBase64Url(trimmed);
+  const candidates = [trimmed];
+
+  if (extracted && extracted !== trimmed) {
+    candidates.unshift(extracted);
+  }
+
   if (decoded && decoded !== trimmed) {
     candidates.unshift(decoded);
   }
@@ -266,7 +433,7 @@ export const parseConfigFromSuffix = (raw: string | null): BankConfig | null => 
         return normalizeConfigWithFallback('url', obj as Record<string, unknown>);
       }
     } catch {
-      // ignore and try fallback parser
+      // ignore and continue
     }
 
     const compact = tryParseCompactString(candidate);

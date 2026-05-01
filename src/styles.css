@@ -1,6 +1,7 @@
 :root {
   color: #172033;
-  font-family: 'Inter', 'PingFang SC', 'Segoe UI', sans-serif;
+  font-family: 'M PLUS 1', 'PingFang SC', 'Segoe UI', 'Hiragino Sans GB', 'Helvetica Neue',
+    sans-serif;
 }
 
 * {
@@ -17,43 +18,116 @@ body,
 
 body {
   min-height: 100vh;
-  background: linear-gradient(140deg, #f7f8fc 0%, #eef4ff 45%, #eaf8fd 100%);
+  background: linear-gradient(140deg, #f6f8ff 0%, #eff7ff 48%, #f7eef9 100%);
 }
 
 .token-app {
   min-height: 100vh;
-  background: transparent;
 }
 
 .token-header {
-  background: linear-gradient(90deg, #1e293b, #334155);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 78px;
+  background: linear-gradient(120deg, #172554, #4f46e5);
   color: #fff;
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
 }
 
-.token-header .ant-typography {
-  color: #fff;
+.token-header-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: min(1320px, 100%);
+  margin: 0 auto;
+}
+
+.token-header .ant-typography,
+.token-header .ant-typography + * {
+  color: rgba(255, 255, 255, 0.94);
 }
 
 .token-content {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding: 24px;
+  max-width: 1320px;
+  margin: 24px auto;
+  padding: 0 16px 28px;
 }
 
 .token-card {
-  border-radius: 14px;
-  box-shadow: 0 8px 30px rgba(16, 24, 40, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 16px;
+}
+
+.token-glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.82));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 20px 44px -24px rgba(15, 23, 42, 0.5);
+}
+
+.token-summary-card {
+  background: transparent;
+  box-shadow: none;
 }
 
 .token-metric {
-  margin-bottom: 16px;
-  color: #334155;
+  margin-bottom: 12px;
+  color: #1f2a37;
 }
 
 .token-chart {
   width: 100%;
   min-height: 300px;
+}
+
+.token-alert {
+  border-radius: 12px;
+}
+
+.tokengift-steps {
+  margin-bottom: 12px;
+}
+
+.tokengift-tabs .ant-tabs-tab {
+  font-weight: 600;
+}
+
+.tokengift-tabs .ant-tabs-content-holder {
+  padding: 16px 0 0;
+}
+
+.mono-block {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid #e5e7eb;
+  background: #0f172a08;
+  padding: 10px 12px;
+  border-radius: 10px;
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+}
+
+pre.mono-block {
+  font-size: 12px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.token-summary {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .token-header {
+    height: auto;
+    padding: 12px 0;
+  }
+
+  .token-header-inner {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
 }
