@@ -5,9 +5,9 @@
   "description": "tokengift CLI for token swap/gift key exchange",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "vite --config web/vite.config.ts",
+    "build": "vite build --config web/vite.config.ts",
+    "preview": "vite preview --config web/vite.config.ts",
     "deploy": "npm run build",
     "tokengift": "node scripts/tokengift.js"
   },

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tokengift"
-version = "0.1.2"
+version = "0.1.4"
 description = "tokengift CLI for tokenSwap-compatible RSA gift/decrypt workflow"
 readme = "README.md"
 requires-python = ">=3.10"

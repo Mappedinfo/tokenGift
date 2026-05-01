@@ -1,22 +1,23 @@
-# tokenSwap 结算中心（纯前端）
+# tokengift
 
-这是一个纯前端的 React + TypeScript + AntV( `@antv/g2plot`) 项目，可直接部署到 GitHub 仓库 `tokenSwap`。项目提供 token 银行与 token 兑换能力，并支持通过
-访问链接附加字符串自动解析配置。
+## 项目描述
+
+这是一个名为 `tokengift` 的项目，可直接部署到 GitHub 仓库 `tokenGift`。项目提供 token 银行与 token 兑换能力，并支持通过访问链接附加字符串自动解析配置。
 
 ## 三版本说明
 
-当前项目在两个生态分别发布，并用途不同：
+当前项目有三个版本，协同支持同一套配置解析与 RSA-OAEP(SHA-256) 加解密兼容规则：
 
-- `npm` 包 `tokengift`：仅提供命令行工具（`node scripts/tokengift.js` 封装）。
+- `npm` 包 `tokengift`：命令行工具（`node scripts/tokengift.js` 封装）。
 - `PyPI` 包 `tokengift`：提供同样参数与加密规则的 Python CLI。
-- `GitHub Pages`：前端“兑换中心 + 发起邀请 + 领取礼物”页面（本仓库页面版，按网址链接直接使用）。
+- GitHub Pages：网页版“兑换中心 + 发起邀请 + 领取礼物”（本仓库页面，按网址链接直接使用）。
 
 3 个版本共享同一套配置解析与 RSA-OAEP(SHA-256) 加解密规则，因此命令行与页面互相兼容。
 
 
 ## 特性
 
-- 纯前端实现，不依赖服务端
+- 不依赖服务端数据库
 - 使用 React + TypeScript + Ant Design + AntV
 - 自动解析 URL 配置，提取：`apiKey / baseUrl / 支持模型 / token 数量`
 - 默认以 `gpt-5.5-medium` 作为结算基准
@@ -44,7 +45,7 @@ npm run preview
 npm run build
 ```
 
-然后把 `dist/` 目录发布到 GitHub Pages（可手动上传或使用 gh-pages/Workflow）。
+前端工程已统一放在 `web/` 目录下，默认构建产物为 `web/dist`，然后发布该目录到 GitHub Pages（可手动上传或使用 gh-pages/Workflow）。
 
 ### 自动发布（推荐）
 
@@ -52,9 +53,9 @@ npm run build
 
 - 文件：`.github/workflows/deploy-gh-pages.yml`
 - 触发：`main` 分支 push 或手动触发
-- 流程：`npm ci -> npm run build -> 同步 dist 到 gh-pages`
+- 流程：`npm ci -> npm run build -> 同步 web/dist 到 gh-pages`
 - 默认会按仓库名 `/tokenSwap/` 作为 `base`，如果你仓库名不同可改：
-  - `vite.config.ts` 的 `GH_PAGES_BASE_PATH` / `VITE_BASE_PATH`
+  - `web/vite.config.ts` 的 `GH_PAGES_BASE_PATH` / `VITE_BASE_PATH`
   - workflow 里的 `env: GH_PAGES_BASE_PATH: /你的仓库名/`
 
 ## URL 自动配置约定
