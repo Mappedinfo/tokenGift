@@ -40,7 +40,7 @@ npm run preview
 ## GitHub Pages 部署
 
 ```bash
-# 使用你自己的仓库名，示例：mappedinfo/tokenSwap
+# 使用你自己的仓库名，示例：mappedinfo/tokenGift
 npm run build
 ```
 

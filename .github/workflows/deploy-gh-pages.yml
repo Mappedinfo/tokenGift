@@ -32,7 +32,7 @@ jobs:
       - name: Build site
         run: npm run build
         env:
-          GH_PAGES_BASE_PATH: /tokenSwap/
+          GH_PAGES_BASE_PATH: /tokenGift/
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
