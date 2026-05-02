@@ -1,7 +1,7 @@
 {
   "name": "tokengift",
   "private": false,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "tokengift CLI for token swap/gift key exchange",
   "homepage": "https://github.com/mappedinfo/tokengift",
   "repository": {
