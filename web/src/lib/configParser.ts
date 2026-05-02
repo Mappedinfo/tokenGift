@@ -217,6 +217,22 @@ const normalizeModels = (models: ParsedModel[]): ParsedModel[] => {
   return [...map.values()];
 };
 
+const normalizeProvider = (value: unknown): BankConfig['provider'] | undefined => {
+  const provider = String(value || '').trim().toLowerCase();
+  if (provider === 'newapi' || provider === 'oneapi' || provider === 'manual') {
+    return provider;
+  }
+  return undefined;
+};
+
+const normalizeQuotaUnit = (value: unknown): BankConfig['quotaUnit'] | undefined => {
+  const unit = String(value || '').trim().toLowerCase();
+  if (unit === 'platform_quota' || unit === 'token') {
+    return unit;
+  }
+  return undefined;
+};
+
 const normalizeConfig = (source: ConfigSource, raw: Record<string, unknown>): BankConfig => {
   const apiKey = String(raw.apiKey || raw.key || raw.api_key || '').trim();
   const baseUrl = String(
@@ -224,6 +240,12 @@ const normalizeConfig = (source: ConfigSource, raw: Record<string, unknown>): Ba
   ).trim();
   const profileName = String(raw.profileName || raw.profile || raw.name || '外部配置钱包').trim();
   const tokenQuota = ensureNumber(raw.tokenQuota || raw.tokens || raw.quota, 0);
+  const expiresAtRaw = raw.expiresAt ?? raw.expiredTime ?? raw.expired_time;
+  const expiresAt = ensureNumber(expiresAtRaw, NaN);
+  const provider = normalizeProvider(raw.provider || raw.issuerProvider);
+  const quotaUnit = normalizeQuotaUnit(raw.quotaUnit || raw.quota_unit);
+  const issuerTokenId =
+    raw.issuerTokenId ?? raw.issuer_token_id ?? raw.tokenId ?? raw.token_id ?? undefined;
   const initialBalances =
     (typeof raw.initialBalances === 'object' && raw.initialBalances) ||
     (typeof raw.balances === 'object' && raw.balances) ||
@@ -252,7 +274,11 @@ const normalizeConfig = (source: ConfigSource, raw: Record<string, unknown>): Ba
     baseUrl,
     models: modelRateList,
     tokenQuota,
-    initialBalances: balances
+    initialBalances: balances,
+    provider,
+    issuerTokenId: typeof issuerTokenId === 'string' || typeof issuerTokenId === 'number' ? issuerTokenId : undefined,
+    expiresAt: Number.isFinite(expiresAt) && expiresAt >= -1 ? expiresAt : undefined,
+    quotaUnit
   };
 };
 
@@ -339,7 +365,11 @@ const buildConfigFromJson = (config: BankConfig): string => {
     baseUrl: config.baseUrl,
     models: config.models.map((item) => ({ id: item.id, rate: item.rate })),
     tokenQuota: config.tokenQuota,
-    initialBalances: config.initialBalances
+    initialBalances: config.initialBalances,
+    provider: config.provider,
+    issuerTokenId: config.issuerTokenId,
+    expiresAt: config.expiresAt,
+    quotaUnit: config.quotaUnit
   } as const;
 
   return toBase64Url(JSON.stringify(payload));
@@ -351,9 +381,13 @@ export const buildConfigShareCode = (
 ): string => {
   const compact = buildConfigFromCompact(config);
   const json = buildConfigFromJson(config);
+  const hasIssuerMetadata = Boolean(
+    config.provider || config.issuerTokenId || config.expiresAt || config.quotaUnit,
+  );
 
   if (mode === 'compact') return compact;
   if (mode === 'json') return json;
+  if (hasIssuerMetadata) return json;
   return json.length < compact.length ? json : compact;
 };
 

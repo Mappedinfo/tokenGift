@@ -117,6 +117,115 @@ aaa|https://api.openai.com/v1|gpt-5.5-medium:1,gpt-4o:1.15|50000|gpt-5.5-medium:
 
 - 本项目不持久传输 API Key，解析行为发生在前端；但请注意 URL 上明文包含 API Key 会有安全风险，请仅用于测试与演示。
 
+## Issuer 发券模式（New API / One API）
+
+如果希望把“指定额度后自动停止消耗”做成硬限制，不应把真实上游 API Key 直接交给 agent。推荐先在 New API / One API 中放入真实上游 Key，再由 `tokengift` 生成有限额、限模型、可过期的本地令牌并包装成礼物配置。
+
+当前 issuer 第一版只在 npm CLI 中提供；Python CLI 继续保持 RSA 加解密兼容。
+
+### New API 发券
+
+New API 的 Token 管理接口支持 `remain_quota`、`model_limits_enabled`、`model_limits`、`allow_ips`、`group` 等字段。管理凭证只从环境变量或命令参数读取，不会写入页面、localStorage 或分享链接。
+
+```bash
+# 也可以写入本地 .env；CLI 会自动读取缺失的环境变量
+export NEWAPI_BASE_URL="https://newapi.example.com"
+export NEWAPI_USER_TOKEN="your-user-token"
+export NEWAPI_USER_ID="1"
+
+npm run tokengift -- issue \
+  --provider newapi \
+  --name agent-a \
+  --quota 100000 \
+  --models gpt-4o-mini,gpt-4o \
+  --expires-at -1
+```
+
+默认输出可被页面解析的配置 JSON：
+
+```json
+{
+  "profileName": "agent-a",
+  "apiKey": "sk-limited-xxx",
+  "baseUrl": "https://newapi.example.com/v1",
+  "models": [
+    { "id": "gpt-4o-mini", "rate": 1 },
+    { "id": "gpt-4o", "rate": 1 }
+  ],
+  "tokenQuota": 100000,
+  "provider": "newapi",
+  "issuerTokenId": 123,
+  "expiresAt": -1,
+  "quotaUnit": "platform_quota"
+}
+```
+
+如果要直接加密给接收方：
+
+```bash
+npm run tokengift -- issue \
+  --provider newapi \
+  --base-url https://newapi.example.com \
+  --name agent-a \
+  --quota 100000 \
+  --models gpt-4o-mini \
+  --public keys/bob_public.pem
+```
+
+如果要生成领取链接：
+
+```bash
+npm run tokengift -- issue \
+  --provider newapi \
+  --base-url https://newapi.example.com \
+  --name agent-a \
+  --quota 100000 \
+  --models gpt-4o-mini \
+  --public keys/bob_public.pem \
+  --link-base https://your-domain/
+```
+
+查询 New API 有限额令牌当前用量：
+
+```bash
+export TOKENGIFT_API_KEY="sk-limited-xxx"
+
+npm run tokengift -- usage \
+  --provider newapi \
+  --base-url https://newapi.example.com
+```
+
+`usage` 会优先请求标准 New API 的 `/api/usage/token`；如果平台是类似一展 API 的二次开发并使用 `/v1/dashboard/billing/usage`，会自动 fallback。可用 `--start-date` 和 `--end-date` 传入毫秒级时间戳覆盖默认近 30 天窗口。
+
+撤销令牌：
+
+```bash
+npm run tokengift -- revoke \
+  --provider newapi \
+  --base-url https://newapi.example.com \
+  --token-id 123
+```
+
+### One API 兼容发券
+
+One API 官方说明支持令牌额度、过期时间、允许 IP 范围以及允许模型访问。由于 One API 官方管理 API 文档列表不完整，`tokengift` 按当前 One API 源码字段兼容：`remain_quota`、`unlimited_quota`、`models`、`subnet`。
+
+New API 二次开发平台如果要求 `X-Api-User`，`tokengift` 会和标准 `New-Api-User` 一起发送以兼容。
+
+```bash
+export ONEAPI_BASE_URL="https://oneapi.example.com"
+export ONEAPI_ACCESS_TOKEN="your-oneapi-access-token"
+
+npm run tokengift -- issue \
+  --provider oneapi \
+  --name agent-a \
+  --quota 100000 \
+  --models gpt-4o-mini,gpt-4o \
+  --subnet "192.168.1.0/24"
+```
+
+注意：这里的 `quota` 是 New API / One API 平台额度单位，通常会按平台的分组倍率、模型倍率、输入输出倍率折算，不等同于原始模型 token 数。额度耗尽后的硬停止由 New API / One API 执行，`tokengift` 只负责创建、包装、加密和分发有限额 key。
+
 ## 配套命令行工具（tokengift）
 
 为了实现“赠予逻辑”中的密钥交换，项目增加了一个通用 CLI：`tokengift`（`scripts/tokengift.js`）。

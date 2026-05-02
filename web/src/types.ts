@@ -14,6 +14,10 @@ export interface BankConfig {
   models: ParsedModel[];
   tokenQuota?: number;
   initialBalances?: Record<string, number>;
+  provider?: 'manual' | 'newapi' | 'oneapi';
+  issuerTokenId?: string | number;
+  expiresAt?: number;
+  quotaUnit?: 'platform_quota' | 'token';
 }
 
 export interface SwapRecord {
